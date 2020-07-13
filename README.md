@@ -1,4 +1,4 @@
-# Progressive Unsupervised Person Re-identification by Tracklet Association with Spatio-Temporal Regularization
+## Progressive Unsupervised Person Re-identification by Tracklet Association with Spatio-Temporal Regularization
 
 The implementation code and models of TASTR.
 
