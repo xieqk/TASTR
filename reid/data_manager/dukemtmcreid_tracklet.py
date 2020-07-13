@@ -42,11 +42,6 @@ class dukemtmcreid_tracklet(object):
         ])
         self.time_mat = self.dist_mat / 1.25
         self.time_bias = [5542, 3606, 27243, 31181, 0, 22401, 18967, 46765]
-        # self.cam = []
-        # for i in range(6):
-        #     data = unpkl('cam%d_filtered.pkl'%(i+1))
-        #     print(i, ':', len(data.keys()))
-        #     self.cam.append(data)
         # self.min_seq_len = min_seq_len
         # self.curr_train_cam = 0
         # self.sample_num = 100
@@ -60,12 +55,9 @@ class dukemtmcreid_tracklet(object):
         self.query_dir = osp.join(self.dataset_dir, 'query')
         self.gallery_dir = osp.join(self.dataset_dir, 'bounding_box_test')
 
-        # self.split_query_json_path = osp.join(self.dataset_dir, 'split_query.json')
-        # self.split_gallery_json_path = osp.join(self.dataset_dir, 'split_gallery.json')
 
         self._check_before_run()
         self._process_dir_tracklet()
-        # self._process_dir_dataset()
 
         query, num_query_pids, num_imgs_query = \
             self._process_dir(self.query_dir, relabel=False)
@@ -154,7 +146,6 @@ class dukemtmcreid_tracklet(object):
                 p_mat = np.full((m, n), 1.0)
             else:
                 delta_t = delta_time(tmins_1, tmaxs_1, tmins_2, tmaxs_2)
-                # p_mat = compute_sp(delta_t, camids_1, camids_2, sigma, use_flat)
                 p_mat = compute_sp(delta_t, camids_1, camids_2, self.time_mat, sigma, use_flat)
             dist_final = distmat / p_mat
 
