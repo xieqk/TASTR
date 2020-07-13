@@ -27,8 +27,7 @@ from reid.utils.iotools import save_checkpoint, check_isfile
 from reid.utils.avgmeter import AverageMeter
 from reid.utils.logger import Logger
 from reid.utils.torchtools import count_num_param
-from reid.utils.reidtools import visualize_ranked_results
-from reid.eval_metrics import evaluate, eval_dukemtmcreid
+from reid.eval_metrics import evaluate
 from reid.samplers import RandomIdentitySampler, ClassIdentitySampler
 from reid.optimizers import init_optim
 
@@ -39,7 +38,7 @@ parser.add_argument('--root', type=str, default='/gdata1/xieqk/reid-dataset',
 parser.add_argument('-d', '--dataset', type=str, default='dukemtmcreid-tracklet',
                     choices=data_manager.get_names())
 parser.add_argument('-j', '--workers', default=8, type=int,
-                    help="number of data loading workers (default: 4)")
+                    help="number of data loading workers (default: 8)")
 parser.add_argument('--height', type=int, default=256,
                     help="height of an image (default: 256)")
 parser.add_argument('--width', type=int, default=128,
@@ -65,7 +64,7 @@ parser.add_argument('--gamma', default=0.1, type=float,
                     help="learning rate decay")
 parser.add_argument('--weight-decay', default=5e-04, type=float,
                     help="weight decay (default: 5e-04)")
-parser.add_argument('--margin', type=float, default=4.0,
+parser.add_argument('--margin', type=float, default=0.3,
                     help="margin for triplet loss")
 parser.add_argument('--num-instances', type=int, default=4,
                     help="number of instances per identity")
@@ -77,11 +76,6 @@ parser.add_argument('--print-freq', type=int, default=10,
                     help="print frequency")
 parser.add_argument('--seed', type=int, default=1,
                     help="manual seed")
-parser.add_argument('--resume', type=str, default='', metavar='PATH')
-parser.add_argument('--load-weights', type=str, default='',
-                    help="load pretrained weights but ignores layers that don't match in size")
-parser.add_argument('--evaluate', action='store_true',
-                    help="evaluation only")
 parser.add_argument('--eval-step', type=int, default=10,
                     help="run evaluation for every N epochs (set to -1 to test after training)")
 parser.add_argument('--start-eval', type=int, default=0,
@@ -93,8 +87,6 @@ parser.add_argument('--gpu-devices', '-g', default='0,1', type=str,
                     help='gpu device ids for CUDA_VISIBLE_DEVICES')
 parser.add_argument('--use-avai-gpus', action='store_true',
                     help="use available gpus instead of specified devices (this is useful when using managed clusters)")
-parser.add_argument('--visualize-ranks', action='store_true',
-                    help="visualize ranked results, only available in evaluation mode (default: False)")
 
 # global variables
 args = parser.parse_args()
@@ -113,13 +105,11 @@ def main():
     if args.save_dir:
         save_dir = args.save_dir
     else:
-        save_dir = osp.join('logs', '%s_L%.4f_E%d_B%d_S%s_M%.1f_N%d_G%.1f_%s'%(args.dataset, args.lr, args.max_epoch, args.train_batch, str(args.stepsize), args.margin, args.num_instances, args.gamma, time.strftime("%Y%m%d-%H%M%S", time.localtime())))
+        save_dir = osp.join('logs', 'dukemtmcreid_s1')
 
-    if not args.evaluate:
-        writer = SummaryWriter(log_dir=save_dir)
-        sys.stdout = Logger(osp.join(save_dir, 'log_train_%s_L%.4f_E%d_B%d_S%s_M%.1f_N%d_G%.1f_%s.txt'%(args.dataset, args.lr, args.max_epoch, args.train_batch, str(args.stepsize), args.margin, args.num_instances, args.gamma, time.strftime("%Y%m%d-%H%M%S", time.localtime()))))
-    else:
-        sys.stdout = Logger(osp.join(save_dir, 'log_test.txt'))
+
+    writer = SummaryWriter(log_dir=save_dir)
+    sys.stdout = Logger(osp.join(save_dir, 'log_train.txt'))
     print("==========\nArgs:{}\n==========".format(args))
 
     if use_gpu:
@@ -157,14 +147,12 @@ def main():
 
     trainloader = DataLoader(
         ImageDataset(new_train, transform=transform_train),
-        # sampler=RandomIdentitySampler(new_train, args.train_batch, args.num_instances),
         sampler=ClassIdentitySampler(new_train, args.train_batch, args.num_instances),
         batch_size=args.train_batch, num_workers=args.workers,
         pin_memory=pin_memory, drop_last=True,
     )
 
     queryloader = DataLoader(
-        # VideoDataset(dataset.query, seq_len=args.seq_len, sample='evenly', transform=transform_test),
         ImageDataset(dataset.query, transform=transform_test),
         batch_size=args.test_batch, shuffle=False, num_workers=args.workers,
         pin_memory=pin_memory, drop_last=False,
@@ -185,38 +173,8 @@ def main():
     optimizer = init_optim(args.optim, model.parameters(), args.lr, args.weight_decay)
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=args.stepsize, gamma=args.gamma)
 
-    if args.load_weights and check_isfile(args.load_weights):
-        # load pretrained weights but ignore layers that don't match in size
-        checkpoint = torch.load(args.load_weights)
-        pretrain_dict = checkpoint['state_dict']
-        model_dict = model.state_dict()
-        pretrain_dict = {k: v for k, v in pretrain_dict.items() if k in model_dict and model_dict[k].size() == v.size()}
-        model_dict.update(pretrain_dict)
-        model.load_state_dict(model_dict)
-        print("Loaded pretrained weights from '{}'".format(args.load_weights))
-
-    if args.resume and check_isfile(args.resume):
-        checkpoint = torch.load(args.resume)
-        model.load_state_dict(checkpoint['state_dict'])
-        args.start_epoch = checkpoint['epoch'] + 1
-        best_rank1 = checkpoint['rank1']
-        print("Loaded checkpoint from '{}'".format(args.resume))
-        print("- start_epoch: {}\n- rank1: {}".format(args.start_epoch, best_rank1))
-
     if use_gpu:
         model = nn.DataParallel(model).cuda()
-
-    if args.evaluate:
-        print("Evaluate only")
-        distmat = time_test(model, queryloader, galleryloader, args.pool, use_gpu, return_distmat=True)
-        print(len(distmat), len(distmat[0]))
-        # if args.visualize_ranks:
-        #     visualize_ranked_results(
-        #         distmat, dataset,
-        #         save_dir=osp.join(save_dir, 'ranked_results'),
-        #         topk=20,
-        #     )
-        return
 
     start_time = time.time()
     train_time = 0
@@ -268,11 +226,6 @@ def main():
                 state_dict = model.state_dict()
 
             if is_best:
-                # save_checkpoint({
-                #     'state_dict': state_dict,
-                #     'rank1': rank1,
-                #     'epoch': epoch,
-                # }, is_best, osp.join(save_dir, 'checkpoint_ep' + str(epoch + 1) + '.pth.tar'))
                 save_checkpoint({
                     'state_dict': state_dict,
                     'rank1': rank1,
@@ -287,7 +240,6 @@ def main():
 
         trainloader = DataLoader(
             ImageDataset(new_train, transform=transform_train),
-            # sampler=RandomIdentitySampler(new_train, args.train_batch, args.num_instances),
             sampler=ClassIdentitySampler(new_train, args.train_batch, args.num_instances),
             batch_size=args.train_batch, num_workers=args.workers,
             pin_memory=pin_memory, drop_last=True,
@@ -411,7 +363,6 @@ def test(model, queryloader, galleryloader, use_gpu, ranks=[1, 5, 10, 20], retur
 
     if return_distmat:
         print(cmc)
-        # np.save('cmc-duke-33.npy', cmc)
         return distmat
     return mAP, cmc[1-1], cmc[5-1], cmc[10-1], cmc[20-1]
 

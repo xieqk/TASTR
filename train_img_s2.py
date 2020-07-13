@@ -31,7 +31,6 @@ from reid.utils.iotools import save_checkpoint, check_isfile
 from reid.utils.avgmeter import AverageMeter
 from reid.utils.logger import Logger
 from reid.utils.torchtools import count_num_param
-from reid.utils.reidtools import visualize_ranked_results
 from reid.utils.sp_utils import *
 from reid.eval_metrics import evaluate
 from reid.samplers import RandomIdentitySampler, ClassIdentitySampler
@@ -47,7 +46,7 @@ parser.add_argument('-d', '--dataset', type=str, default='dukemtmcreid-tracklet'
 parser.add_argument('--flag', type=str, default='default',
                     help="flag")
 parser.add_argument('-j', '--workers', default=8, type=int,
-                    help="number of data loading workers (default: 4)")
+                    help="number of data loading workers (default: 8)")
 parser.add_argument('--height', type=int, default=256,
                     help="height of an image (default: 256)")
 parser.add_argument('--width', type=int, default=128,
@@ -105,13 +104,11 @@ parser.add_argument('--save-dir', type=str, default='')
 parser.add_argument('--use-cpu', action='store_true',
                     help="use cpu")
 parser.add_argument('--scratch', action='store_true',
-                    help="use cpu")
+                    help="scratch")
 parser.add_argument('--gpu-devices', '-g', default='0', type=str,
                     help='gpu device ids for CUDA_VISIBLE_DEVICES')
 parser.add_argument('--use-avai-gpus', action='store_true',
                     help="use available gpus instead of specified devices (this is useful when using managed clusters)")
-parser.add_argument('--visualize-ranks', action='store_true',
-                    help="visualize ranked results, only available in evaluation mode (default: False)")
 
 # global variables
 args = parser.parse_args()
@@ -128,7 +125,7 @@ def main():
     if args.save_dir:
         save_dir = args.save_dir
     else:
-        save_dir = osp.join('logs', '%s_Scra%s_K%d_L%.4f_E%d_B%d_S%s_M%.1f_N%d_G%.1f_%s'%(args.dataset, args.scratch, args.kmeans, args.lr, args.max_epoch, args.train_batch, str(args.stepsize), args.margin, args.num_instances, args.gamma, time.strftime("%Y%m%d-%H%M%S", time.localtime())))
+        save_dir = osp.join('logs', 'dukemtmcreid_s2')
 
     if not args.evaluate:
         writer = SummaryWriter(log_dir=save_dir)
@@ -171,7 +168,6 @@ def main():
     if args.resume and check_isfile(args.resume):
         checkpoint = torch.load(args.resume)
         model_s1.load_state_dict(checkpoint['state_dict'])
-        # args.start_epoch = checkpoint['epoch'] + 1
         best_rank1 = checkpoint['rank1']
         print("Loaded checkpoint from '{}'".format(args.resume))
         print("- start_epoch: {}\n- rank1: {}".format(args.start_epoch, best_rank1))
@@ -198,9 +194,7 @@ def main():
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=args.stepsize, gamma=args.gamma)
 
 
-
     queryloader = DataLoader(
-        # VideoDataset(dataset.query, seq_len=args.seq_len, sample='evenly', transform=transform_test),
         ImageDataset(dataset.query, transform=transform_test),
         batch_size=args.test_batch, shuffle=False, num_workers=args.workers,
         pin_memory=pin_memory, drop_last=False,
@@ -216,14 +210,7 @@ def main():
 
     if args.evaluate:
         print("Evaluate only")
-        distmat = test(model_s1, queryloader, galleryloader, use_gpu, return_distmat=True)
-        print(len(distmat), len(distmat[0]))
-        # if args.visualize_ranks:
-        #     visualize_ranked_results(
-        #         distmat, dataset,
-        #         save_dir=osp.join(save_dir, 'ranked_results'),
-        #         topk=20,
-        #     )
+        mAP, rank1, rank5, rank10, rank20 = test(model, queryloader, galleryloader, use_gpu)
         return
 
     start_time = time.time()
@@ -256,10 +243,6 @@ def main():
                 if epoch == 0:
                     feats, tids, camids, tmins, tmaxs, otids = \
                         extract_feat(model_s1, trackletsloader, args.pool, use_gpu)
-                    # if args.scratch:
-                    #     model = model_0
-                    # else:
-                    #     model = model_s1
                 else:
                     feats, tids, camids, tmins, tmaxs, otids = \
                         extract_feat(model, trackletsloader, args.pool, use_gpu)
@@ -302,10 +285,6 @@ def main():
 
             writer.add_scalars('scalar/precision', res_dict, epoch)
 
-        # association
-
-
-
         train(epoch, model, criterion_htri, optimizer, trainloader, use_gpu, writer)
 
         train_time += round(time.time() - start_train_time)
@@ -337,11 +316,6 @@ def main():
                 state_dict = model.state_dict()
 
             if is_best:
-                # save_checkpoint({
-                #     'state_dict': state_dict,
-                #     'rank1': rank1,
-                #     'epoch': epoch,
-                # }, is_best, osp.join(save_dir, 'checkpoint_ep' + str(epoch + 1) + '.pth.tar'))
                 save_checkpoint({
                     'state_dict': state_dict,
                     'rank1': rank1,
@@ -473,7 +447,6 @@ def test(model, queryloader, galleryloader, use_gpu, ranks=[1, 5, 10, 20], retur
 
     if return_distmat:
         print(cmc)
-        # np.save('cmc-duke-33.npy', cmc)
         return distmat
     return mAP, cmc[1-1], cmc[5-1], cmc[10-1], cmc[20-1]
 
