@@ -13,7 +13,7 @@ The implementation code and models of TASTR.
 ### Installation
 
 ```bash
-git clone git@github.com:xieqk/TASTR.git
+git clone https://github.com/xieqk/TASTR.git
 ```
 
 ### Prepare dataset
