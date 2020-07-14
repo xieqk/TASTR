@@ -18,7 +18,7 @@ git clone https://github.com/xieqk/TASTR.git
 
 ### Prepare dataset
 
-Download DukeMTMC-reID dataset then extract file to your data directory (denoted as ${data_root}). The file structure is as follows
+Download DukeMTMC-reID dataset then extract file to your data directory ( denoted as `${data_root}` ). The file structure is as follows
 
 ```bash
 ${data_root}
@@ -34,7 +34,7 @@ ${data_root}
 ```
 
 ### Training
-modify the ${data_root} in `./scripts/train_dukemtmcreid.sh`, then run
+modify the `${data_root}` in `./scripts/train_dukemtmcreid.sh`, then run
 
 ```bash
 ./scripts/train_dukemtmcreid.sh
