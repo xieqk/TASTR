@@ -33,6 +33,7 @@ dukemtmc-reid/
 ```
 
 ### Training
+modify the data path in `./scripts/train_dukemtmcreid.sh`, then run
 
 ```bash
 ./scripts/train_dukemtmcreid.sh
