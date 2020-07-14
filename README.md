@@ -21,15 +21,16 @@ git clone https://github.com/xieqk/TASTR.git
 Download DukeMTMC-reID dataset then extract file. The file structure is as follows
 
 ```bash
-dukemtmc-reid/
-└── DukeMTMC-reID
-    ├── bounding_box_test
-    ├── bounding_box_train
-    ├── CITATION.txt
-    ├── LICENSE_DukeMTMC-reID.txt
-    ├── LICENSE_DukeMTMC.txt
-    ├── query
-    └── README.md
+${data_root}
+└── dukemtmc-reid/
+    └── DukeMTMC-reID
+        ├── bounding_box_test
+        ├── bounding_box_train
+        ├── CITATION.txt
+        ├── LICENSE_DukeMTMC-reID.txt
+        ├── LICENSE_DukeMTMC.txt
+        ├── query
+        └── README.md
 ```
 
 ### Training
